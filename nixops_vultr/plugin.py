@@ -11,7 +11,7 @@ class NixopsVultrPlugin(nixops.plugins.Plugin):
     def load():
         return [
             "nixops_vultr.resources",
-            "nixops_vultr.backends.instance",
+            "nixops_vultr.backends.vultr",
         ]
 
 

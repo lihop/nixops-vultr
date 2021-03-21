@@ -32,13 +32,8 @@ from nixops.util import attr_property
 from nixops.state import RecordId
 import codecs
 
-# FIXME: Temporary workaround for importing the vultr_api module.
-import sys
-sys.path.append(f'{os.environ.get("VIRTUAL_ENV")}/src/vultr-api/')
+from ..python_vultr.vultr import Vultr, VultrError
 
-import vultr_api
-
-vultr = vultr_api
 
 infect_path: str = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "data", "nixos-infect")
@@ -46,39 +41,39 @@ infect_path: str = os.path.abspath(
 
 
 class InstanceOptions(ResourceOptions):
-    authToken: Optional[str]
+    apiKey: Optional[str]
     region: Optional[str]
-    size: Optional[str]
+    plan: Optional[str]
     enableIpv6: Optional[bool]
 
 
 class InstanceDeploymentOptions(MachineOptions):
-    instance: InstanceOptions
+    vultr: InstanceOptions
 
 
 class InstanceDefinition(MachineDefinition):
     @classmethod
     def get_type(cls) -> str:
-        return "instance"
+        return "vultr"
 
     config: InstanceDeploymentOptions
 
-    auth_token: Optional[str]
+    api_key: Optional[str]
     region: Optional[str]
-    size: Optional[str]
+    plan: Optional[str]
     enable_ipv6: Optional[bool]
 
     def __init__(self, name: str, config: ResourceEval):
         super().__init__(name, config)
 
-        if self.config.instance.authToken:
-            self.auth_token = self.config.instance.authToken.strip()
+        if self.config.vultr.apiKey:
+            self.api_key = self.config.vultr.apiKey.strip()
         else:
-            self.auth_token = None
+            self.api_key = None
 
-        self.region = self.config.instance.region
-        self.size = self.config.instance.size
-        self.enable_ipv6 = self.config.instance.enableIpv6
+        self.region = self.config.vultr.region
+        self.plan = self.config.vultr.plan
+        self.enable_ipv6 = self.config.vultr.enableIpv6
 
     def show_type(self) -> str:
         return "{0} [{1}]".format(self.get_type(), self.region)
@@ -87,7 +82,7 @@ class InstanceDefinition(MachineDefinition):
 class InstanceState(MachineState[InstanceDefinition]):
     @classmethod
     def get_type(cls) -> str:
-        return "instance"
+        return "vultr"
 
     # generic options
     # state: int= attr_property("state", MachineState.MISSING, int)  # override
@@ -95,21 +90,21 @@ class InstanceState(MachineState[InstanceDefinition]):
     public_ipv6: dict = attr_property("publicIpv6", {}, "json")
     default_gateway: Optional[str] = attr_property("defaultGateway", None)
     netmask: Optional[str] = attr_property("netmask", None)
-    # instance options
-    enable_ipv6: Optional[bool] = attr_property("instance.enableIpv6", False, bool)
+    # vultr options
+    enable_ipv6: Optional[bool] = attr_property("vultr.enableIpv6", False, bool)
     default_gateway6: Optional[str] = attr_property("defaultGateway6", None)
-    region: Optional[str] = attr_property("instance.region", None)
-    size: Optional[str] = attr_property("instance.size", None)
-    auth_token: Optional[str] = attr_property("instance.authToken", None)
-    instance_id: Optional[str] = attr_property("instance.instanceId", None)
-    key_pair: Optional[str] = attr_property("instance.keyPair", None)
+    region: Optional[str] = attr_property("vultr.region", None)
+    plan: Optional[str] = attr_property("vultr.plan", None)
+    api_key: Optional[str] = attr_property("vultr.apiKey", None)
+    instance_id: Optional[str] = attr_property("vultr.instanceId", None)
+    key_pair: Optional[str] = attr_property("vultr.keyPair", None)
 
     def __init__(self, depl: Deployment, name: str, id: RecordId) -> None:
         MachineState.__init__(self, depl, name, id)
         self.name: str = name
 
-    def _get_instance(self) -> vultr.instance:
-        return digitalocean.Instance(id=self.instance, token=self.get_auth_token())
+    def _get_instance(self):
+        return vultr.Instances.Get(id=self.instance, token=self.get_api_key())
 
     def get_ssh_name(self) -> Optional[str]:
         return self.public_ipv4
@@ -180,22 +175,23 @@ class InstanceState(MachineState[InstanceDefinition]):
 
     def set_common_state(self, defn: InstanceDefinition) -> None:
         super().set_common_state(defn)
-        self.auth_token = defn.auth_token
+        self.api_key = defn.api_key
 
-    def get_auth_token(self) -> Optional[str]:
-        return os.environ.get("DIGITAL_OCEAN_AUTH_TOKEN", self.auth_token)
+    def get_api_key(self) -> Optional[str]:
+        return os.environ.get("VULTR_API_KEY", self.api_key)
 
     def destroy(self, wipe: bool = False) -> bool:
         self.log("destroying instance {}".format(self.instance_id))
         try:
-            instance = self._get_instance()
-            instance.destroy()
-        except digitalocean.baseapi.NotFoundError:
+            vultr = Vultr(api_key=self.get_api_key())
+            vultr.instances.delete(instance_id=self.instance_id)
+        except VultrError:
             self.log("instance not found - assuming it's been destroyed already")
+            return True
         self.public_ipv4 = None
         self.instance_id = None
 
-        return True
+        return False
 
     def create(self, defn, check, allow_reboot: bool, allow_recreate: bool) -> None:
         try:
@@ -210,64 +206,60 @@ class InstanceState(MachineState[InstanceDefinition]):
         if self.instance_id is not None:
             return
 
-        self.manager = digitalocean.Manager(token=self.get_auth_token())
-        instance = digitalocean.Instance(
-            token=self.get_auth_token(),
-            name=self.name,
+        vultr = Vultr(api_key=self.get_api_key())
+
+        instance = vultr.instances.create(
             region=defn.region,
-            ipv6=defn.enable_ipv6,
-            ssh_keys=[ssh_key.public_key],
-            image="ubuntu-16-04-x64",  # only for lustration
-            size_slug=defn.size,
-        )
+            plan=defn.plan,
+            params={
+                'iso_id': '5404055c-6ef0-43db-bc1a-255152eb133f', # NixOS 20.09
+            },
+        )['instance']
 
         self.log_start("creating instance ...")
-        instance.create()
 
-        status = "in-progress"
-        while status == "in-progress":
-            actions = instance.get_actions()
-            for action in actions:
-                action.load()
-                if action.status != "in-progress":
-                    status = action.status
+        status = "pending"
+        while status == "pending":
+            instance = vultr.instances.get(instance['id'])['instance']
+            if instance['status'] != "pending":
+                status = instance['status']
             time.sleep(1)
             self.log_continue("[{}] ".format(status))
 
-        if status != "completed":
+        if status != "active":
             raise Exception("unexpected status: {}".format(status))
 
-        instance.load()
-        self.instance = instance.id
-        self.public_ipv4 = instance.ip_address
-        self.log_end("{}".format(instance.ip_address))
+        #instance.load()
+        self.instance_id = instance['id']
+        self.public_ipv4 = instance['main_ip']
+        self.log_end("{}".format(instance['main_ip']))
 
-        for n in instance.networks["v4"]:
-            if n["ip_address"] == self.public_ipv4:
-                self.default_gateway = n["gateway"]
-        self.netmask = instance.networks["v4"][0]["netmask"]
+        #for n in instance.networks["v4"]:
+        #    if n["ip_address"] == self.public_ipv4:
+        #        self.default_gateway = n["gateway"]
+        #self.netmask = instance.networks["v4"][0]["netmask"]
 
-        first_ipv6 = {}
-        first_gw6 = None
-        if "v6" in instance.networks:
-            public_ipv6_networks = [
-                n for n in instance.networks["v6"] if n["type"] == "public"
-            ]
-            if len(public_ipv6_networks) > 0:
-                # The DigitalOcean API does not expose an explicit
-                # default interface or gateway, so assume this is it.
-                first_ipv6["address"] = public_ipv6_networks[0]["ip_address"]
-                first_ipv6["prefixLength"] = public_ipv6_networks[0]["netmask"]
-                first_gw6 = public_ipv6_networks[0]["gateway"]
-        self.public_ipv6 = first_ipv6
-        self.default_gateway6 = first_gw6
+        #first_ipv6 = {}
+        #first_gw6 = None
+        #if "v6" in instance.networks:
+        #    public_ipv6_networks = [
+        #        n for n in instance.networks["v6"] if n["type"] == "public"
+        #    ]
+        #    if len(public_ipv6_networks) > 0:
+        #        # The DigitalOcean API does not expose an explicit
+        #        # default interface or gateway, so assume this is it.
+        #        first_ipv6["address"] = public_ipv6_networks[0]["ip_address"]
+        #        first_ipv6["prefixLength"] = public_ipv6_networks[0]["netmask"]
+        #        first_gw6 = public_ipv6_networks[0]["gateway"]
+        #self.public_ipv6 = first_ipv6
+        #self.default_gateway6 = first_gw6
 
-        # run modified nixos-infect
-        # - no reboot
-        # - predictable network interface naming (ens3 etc)
+        ## run modified nixos-infect
+        ## - no reboot
+        ## - predictable network interface naming (ens3 etc)
         self.wait_for_ssh()
-        self.log_start("running nixos-infect")
-        self.run_command("bash </dev/stdin 2>&1", stdin=open(infect_path))
+        #self.log_start("running nixos-infect")
+        #self.run_command("bash </dev/stdin 2>&1", stdin=open(infect_path))
         self.reboot_sync()
 
     def start(self) -> None:

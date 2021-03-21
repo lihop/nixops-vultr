@@ -1,0 +1,3 @@
+[submodule "python-vultr"]
+	path = nixops_vultr/python_vultr
+	url = https://github.com/lihop/python-vultr

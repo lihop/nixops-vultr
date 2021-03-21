@@ -7,14 +7,14 @@ from tests.functional import generic_deployment_test
 
 parent_dir = path.dirname(__file__)
 
-test_spec = "{0}/single_droplet_base.nix".format(parent_dir)
+test_spec = "{0}/single_instance_base.nix".format(parent_dir)
 
 
-class SingleDropletTest(generic_deployment_test.GenericDeploymentTest):
+class SingleInstanceTest(generic_deployment_test.GenericDeploymentTest):
     _multiprocess_can_split_ = True
 
     def setup(self):
-        super(SingleDropletTest, self).setup()
+        super(SingleInstanceTest, self).setup()
         self.depl.nix_exprs = [test_spec]
 
     def test_do_droplet(self):

@@ -9,6 +9,9 @@ authors = [
 ]
 license = "LGPL-3.0-only"
 include = ["nixops_vultr/nix/*.nix"]
+packages = [
+  { include = "python-vultr" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"

@@ -2,10 +2,10 @@
   config_exporters = { optionalAttrs, ... }:
     [
       (config: {
-        instance = optionalAttrs (config.deployment.targetEnv == "instance")
-          config.deployment.instance;
+        vultr = optionalAttrs (config.deployment.targetEnv == "vultr")
+          config.deployment.vultr;
       })
     ];
-  options = [ ./instance.nix ];
+  options = [ ./vultr.nix ];
   resources = { evalResources, zipAttrs, resourcesByType, ... }: { };
 }
