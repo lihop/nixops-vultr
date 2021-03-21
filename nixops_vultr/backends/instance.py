@@ -32,7 +32,13 @@ from nixops.util import attr_property
 from nixops.state import RecordId
 import codecs
 
-import digitalocean  # type: ignore
+# FIXME: Temporary workaround for importing the vultr_api module.
+import sys
+sys.path.append(f'{os.environ.get("VIRTUAL_ENV")}/src/vultr-api/')
+
+import vultr_api
+
+vultr = vultr_api
 
 infect_path: str = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "data", "nixos-infect")
@@ -102,7 +108,7 @@ class InstanceState(MachineState[InstanceDefinition]):
         MachineState.__init__(self, depl, name, id)
         self.name: str = name
 
-    def _get_instance(self) -> digitalocean.Instance:
+    def _get_instance(self) -> vultr.instance:
         return digitalocean.Instance(id=self.instance, token=self.get_auth_token())
 
     def get_ssh_name(self) -> Optional[str]:

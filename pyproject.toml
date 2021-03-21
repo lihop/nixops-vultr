@@ -14,6 +14,7 @@ include = ["nixops_vultr/nix/*.nix"]
 python = "^3.7"
 python-digitalocean = "^1.15.0"
 nixops = { git = "https://github.com/NixOS/nixops.git" }
+vultr-api = { git = "https://github.com/nxo0/vultr-api", branch = "main" }
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.770"
