@@ -1,9 +1,9 @@
-# NixOps DigitalOcean Plugin
+# NixOps Vultr Plugin
 
 NixOps (formerly known as Charon) is a tool for deploying NixOS
 machines in a network or cloud.
 
-This repo contains the NixOps DigitalOcean Plugin.
+This repo contains a NixOps Vultr Plugin.
 
 * [Manual](https://nixos.org/nixops/manual/)
 * [Installation](https://nixos.org/nixops/manual/#chap-installation) / [Hacking](https://nixos.org/nixops/manual/#chap-hacking)
@@ -15,7 +15,7 @@ This repo contains the NixOps DigitalOcean Plugin.
 
 ## Developing
 
-To start developing on the NixOps DigitalOcean plugin, you can run:
+To start developing this NixOps Vultr plugin, you can run:
 
 ```bash
   $ ./dev-shell
@@ -26,6 +26,6 @@ To start developing on the NixOps DigitalOcean plugin, you can run:
 The command to build NixOps depends on your platform.
 
 See the main NixOps repo instructions for how to built NixOps
-with this DigitalOcean plugin.
+with this Vultr plugin.
 
 This document is a work in progress.
