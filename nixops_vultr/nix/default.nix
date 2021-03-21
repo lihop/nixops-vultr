@@ -2,10 +2,10 @@
   config_exporters = { optionalAttrs, ... }:
     [
       (config: {
-        droplet = optionalAttrs (config.deployment.targetEnv == "droplet")
-          config.deployment.droplet;
+        instance = optionalAttrs (config.deployment.targetEnv == "instance")
+          config.deployment.instance;
       })
     ];
-  options = [ ./droplet.nix ];
+  options = [ ./instance.nix ];
   resources = { evalResources, zipAttrs, resourcesByType, ... }: { };
 }

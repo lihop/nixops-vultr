@@ -2,7 +2,7 @@ import os.path
 import nixops.plugins
 
 
-class NixopsDigitalOceanPlugin(nixops.plugins.Plugin):
+class NixopsVultrPlugin(nixops.plugins.Plugin):
     @staticmethod
     def nixexprs():
         return [os.path.dirname(os.path.abspath(__file__)) + "/nix"]
@@ -10,11 +10,11 @@ class NixopsDigitalOceanPlugin(nixops.plugins.Plugin):
     @staticmethod
     def load():
         return [
-            "nixops_digitalocean.resources",
-            "nixops_digitalocean.backends.droplet",
+            "nixops_vultr.resources",
+            "nixops_vultr.backends.instance",
         ]
 
 
 @nixops.plugins.hookimpl
 def plugin():
-    return NixopsDigitalOceanPlugin()
+    return NixopsVultrPlugin()

@@ -39,23 +39,23 @@ infect_path: str = os.path.abspath(
 )
 
 
-class DropletOptions(ResourceOptions):
+class InstanceOptions(ResourceOptions):
     authToken: Optional[str]
     region: Optional[str]
     size: Optional[str]
     enableIpv6: Optional[bool]
 
 
-class DropletDeploymentOptions(MachineOptions):
-    droplet: DropletOptions
+class InstanceDeploymentOptions(MachineOptions):
+    instance: InstanceOptions
 
 
-class DropletDefinition(MachineDefinition):
+class InstanceDefinition(MachineDefinition):
     @classmethod
     def get_type(cls) -> str:
-        return "droplet"
+        return "instance"
 
-    config: DropletDeploymentOptions
+    config: InstanceDeploymentOptions
 
     auth_token: Optional[str]
     region: Optional[str]
@@ -65,23 +65,23 @@ class DropletDefinition(MachineDefinition):
     def __init__(self, name: str, config: ResourceEval):
         super().__init__(name, config)
 
-        if self.config.droplet.authToken:
-            self.auth_token = self.config.droplet.authToken.strip()
+        if self.config.instance.authToken:
+            self.auth_token = self.config.instance.authToken.strip()
         else:
             self.auth_token = None
 
-        self.region = self.config.droplet.region
-        self.size = self.config.droplet.size
-        self.enable_ipv6 = self.config.droplet.enableIpv6
+        self.region = self.config.instance.region
+        self.size = self.config.instance.size
+        self.enable_ipv6 = self.config.instance.enableIpv6
 
     def show_type(self) -> str:
         return "{0} [{1}]".format(self.get_type(), self.region)
 
 
-class DropletState(MachineState[DropletDefinition]):
+class InstanceState(MachineState[InstanceDefinition]):
     @classmethod
     def get_type(cls) -> str:
-        return "droplet"
+        return "instance"
 
     # generic options
     # state: int= attr_property("state", MachineState.MISSING, int)  # override
@@ -89,27 +89,27 @@ class DropletState(MachineState[DropletDefinition]):
     public_ipv6: dict = attr_property("publicIpv6", {}, "json")
     default_gateway: Optional[str] = attr_property("defaultGateway", None)
     netmask: Optional[str] = attr_property("netmask", None)
-    # droplet options
-    enable_ipv6: Optional[bool] = attr_property("droplet.enableIpv6", False, bool)
+    # instance options
+    enable_ipv6: Optional[bool] = attr_property("instance.enableIpv6", False, bool)
     default_gateway6: Optional[str] = attr_property("defaultGateway6", None)
-    region: Optional[str] = attr_property("droplet.region", None)
-    size: Optional[str] = attr_property("droplet.size", None)
-    auth_token: Optional[str] = attr_property("droplet.authToken", None)
-    droplet_id: Optional[str] = attr_property("droplet.dropletId", None)
-    key_pair: Optional[str] = attr_property("droplet.keyPair", None)
+    region: Optional[str] = attr_property("instance.region", None)
+    size: Optional[str] = attr_property("instance.size", None)
+    auth_token: Optional[str] = attr_property("instance.authToken", None)
+    instance_id: Optional[str] = attr_property("instance.instanceId", None)
+    key_pair: Optional[str] = attr_property("instance.keyPair", None)
 
     def __init__(self, depl: Deployment, name: str, id: RecordId) -> None:
         MachineState.__init__(self, depl, name, id)
         self.name: str = name
 
-    def _get_droplet(self) -> digitalocean.Droplet:
-        return digitalocean.Droplet(id=self.droplet_id, token=self.get_auth_token())
+    def _get_instance(self) -> digitalocean.Instance:
+        return digitalocean.Instance(id=self.instance, token=self.get_auth_token())
 
     def get_ssh_name(self) -> Optional[str]:
         return self.public_ipv4
 
     def get_ssh_flags(self, *args, **kwargs) -> List[str]:
-        super_flags = super(DropletState, self).get_ssh_flags(*args, **kwargs)
+        super_flags = super(InstanceState, self).get_ssh_flags(*args, **kwargs)
         return super_flags + [
             "-o",
             "UserKnownHostsFile=/dev/null",
@@ -172,7 +172,7 @@ class DropletState(MachineState[DropletDefinition]):
         # make sure the ssh key exists before we do anything else
         return {r for r in resources if isinstance(r, ssh_keypair.SSHKeyPairState)}
 
-    def set_common_state(self, defn: DropletDefinition) -> None:
+    def set_common_state(self, defn: InstanceDefinition) -> None:
         super().set_common_state(defn)
         self.auth_token = defn.auth_token
 
@@ -180,14 +180,14 @@ class DropletState(MachineState[DropletDefinition]):
         return os.environ.get("DIGITAL_OCEAN_AUTH_TOKEN", self.auth_token)
 
     def destroy(self, wipe: bool = False) -> bool:
-        self.log("destroying droplet {}".format(self.droplet_id))
+        self.log("destroying instance {}".format(self.instance_id))
         try:
-            droplet = self._get_droplet()
-            droplet.destroy()
+            instance = self._get_instance()
+            instance.destroy()
         except digitalocean.baseapi.NotFoundError:
-            self.log("droplet not found - assuming it's been destroyed already")
+            self.log("instance not found - assuming it's been destroyed already")
         self.public_ipv4 = None
-        self.droplet_id = None
+        self.instance_id = None
 
         return True
 
@@ -201,11 +201,11 @@ class DropletState(MachineState[DropletDefinition]):
 
         self.set_common_state(defn)
 
-        if self.droplet_id is not None:
+        if self.instance_id is not None:
             return
 
         self.manager = digitalocean.Manager(token=self.get_auth_token())
-        droplet = digitalocean.Droplet(
+        instance = digitalocean.Instance(
             token=self.get_auth_token(),
             name=self.name,
             region=defn.region,
@@ -215,12 +215,12 @@ class DropletState(MachineState[DropletDefinition]):
             size_slug=defn.size,
         )
 
-        self.log_start("creating droplet ...")
-        droplet.create()
+        self.log_start("creating instance ...")
+        instance.create()
 
         status = "in-progress"
         while status == "in-progress":
-            actions = droplet.get_actions()
+            actions = instance.get_actions()
             for action in actions:
                 action.load()
                 if action.status != "in-progress":
@@ -231,21 +231,21 @@ class DropletState(MachineState[DropletDefinition]):
         if status != "completed":
             raise Exception("unexpected status: {}".format(status))
 
-        droplet.load()
-        self.droplet_id = droplet.id
-        self.public_ipv4 = droplet.ip_address
-        self.log_end("{}".format(droplet.ip_address))
+        instance.load()
+        self.instance = instance.id
+        self.public_ipv4 = instance.ip_address
+        self.log_end("{}".format(instance.ip_address))
 
-        for n in droplet.networks["v4"]:
+        for n in instance.networks["v4"]:
             if n["ip_address"] == self.public_ipv4:
                 self.default_gateway = n["gateway"]
-        self.netmask = droplet.networks["v4"][0]["netmask"]
+        self.netmask = instance.networks["v4"][0]["netmask"]
 
         first_ipv6 = {}
         first_gw6 = None
-        if "v6" in droplet.networks:
+        if "v6" in instance.networks:
             public_ipv6_networks = [
-                n for n in droplet.networks["v6"] if n["type"] == "public"
+                n for n in instance.networks["v6"] if n["type"] == "public"
             ]
             if len(public_ipv6_networks) > 0:
                 # The DigitalOcean API does not expose an explicit
@@ -268,17 +268,17 @@ class DropletState(MachineState[DropletDefinition]):
         if self.state == self.UP:
             return
 
-        self.log("starting droplet... ")
-        droplet = self._get_droplet()
+        self.log("starting instance... ")
+        instance = self._get_instance()
         self.state = self.STARTING
-        droplet.reboot()
+        instance.reboot()
 
         if not nixops.util.check_wait(
             self.check_started, initial=3, max_tries=100, exception=False
         ):
             raise Exception(
-                "Droplet '{0}' failed to start. (state is '{1}')".format(
-                    self.droplet_id, droplet.status
+                "Instance '{0}' failed to start. (state is '{1}')".format(
+                    self.instance, instance.status
                 )
             )
 
@@ -291,18 +291,18 @@ class DropletState(MachineState[DropletDefinition]):
         return self.check_status("off")
 
     def check_status(self, status: str) -> bool:
-        droplet = self._get_droplet()
-        droplet.load()
-        self.log_continue("[{0}] ".format(droplet.status))
-        if droplet.status == status:
+        instance = self._get_instance()
+        instance.load()
+        self.log_continue("[{0}] ".format(instance.status))
+        if instance.status == status:
             return True
 
         return False
 
     def stop(self) -> None:
-        self.log_start("stopping droplet...")
-        droplet = self._get_droplet()
-        droplet.shutdown()
+        self.log_start("stopping instance...")
+        instance = self._get_instance()
+        instance.shutdown()
         self.state = self.STOPPING
 
         if not nixops.util.check_wait(
@@ -310,13 +310,13 @@ class DropletState(MachineState[DropletDefinition]):
         ):
             self.log_end("(time out)")
             self.log_start("forcing power off... ")
-            droplet.power_off()
+            instance.power_off()
             if not nixops.util.check_wait(
                 self.check_stopped, initial=3, max_tries=100, exception=False
             ):
                 raise Exception(
-                    "Droplet '{0}' failed to stop (state is '{1}')".format(
-                        self.droplet_id, droplet.status
+                    "Instance '{0}' failed to stop (state is '{1}')".format(
+                        self.instance_id, instance.status
                     )
                 )
 
@@ -325,9 +325,9 @@ class DropletState(MachineState[DropletDefinition]):
 
     def reboot(self, hard: bool = False) -> None:
         if hard:
-            self.log("sending hard reset to droplet...")
-            droplet = self._get_droplet()
-            droplet.reboot()
+            self.log("sending hard reset to instance...")
+            instance = self._get_instance()
+            instance.reboot()
             self.state = self.STARTING
             self.wait_for_ssh()
         else:
